@@ -54,6 +54,7 @@ class JadeLogging {
 
     async log(message) {
         console.debug(message)
+        await req(`http://127.0.0.1:8099/upload`,{data:{"log":message + "\n"},timeout:0.1})
         // await localLog.set(message);
     }
 

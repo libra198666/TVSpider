@@ -6,97 +6,24 @@
 * @Software : Samples
 * @Desc     :
 */
-import "../util/global.js"
-import {VodDetail, VodShort} from "../../../lib/vod.js";
-import * as Utils from "../../../lib/utils.js";
-import {_, load, Uri} from "../../../lib/cat.js";
-import {DanmuSpider} from "../../../lib/danmuSpider.js";
-import {JadeLogging} from "../util/log.js"
-import {Result} from "../../../js/spider.js";
-import CryptoJS from "crypto-js";
+
+import {Spider} from "../../../js/spider.js";
+import {JadeLogging} from "../util/log.js";
+import {_,} from "../../../lib/cat.js"
+import {VodDetail} from "../../../lib/vod.js";
+import * as wasi from "wasi";
 
 
-class Spider {
+class NodeJSSpider extends Spider {
     constructor() {
-        this.siteKey = ""
-        this.siteType = 0
+        super();
         this.jadeLog = new JadeLogging(this.getAppName(), "DEBUG")
-        this.classes = []
-        this.filterObj = {}
-        this.catOpenStatus = true
-        this.danmuStaus = false
-        this.reconnectTimes = 0
-        this.maxReconnectTimes = 5
-        this.siteUrl = ""
-        this.vodList = []
-        this.homeVodList = []
-        this.count = 0
-        this.limit = 0
-        this.total = 0
-        this.page = 0
-        this.vodDetail = new VodDetail()
-        this.playUrl = ""
-        this.header = {}
-        this.episodeObj = {}
-        this.danmuUrl = ""
-        this.result = new Result()
-
     }
-
-    getName() {
-        return `?┃基础┃?`
-    }
-
-    getAppName() {
-        return `基础`
-    }
-
-    getJSName() {
-        return "base"
-    }
-
-    getType() {
-        return 3
-    }
-    getTypeDic(type_name, type_id) {
-        return {"type_name": type_name, "type_id": type_id}
-    }
-    async parseVodShortListFromDoc($) {
-    }
-
-    async parseVodShortListFromJson(obj) {
-    }
-    parseVodShortFromElement($, element) {
-    }
-
-    async parseVodShortListFromDocByCategory($) {
-    }
-
-    async parseVodShortListFromDocBySearch($) {
-    }
-
-    async parseVodDetailFromDoc($) {
-    }
-    async parseVodDetailfromJson(obj) {
-    }
-
-    async getFilter($) {
-
-    }
-
-    async setClasses() {
-
-    }
-
-    async setFilterObj() {
-
-    }
-
 
     async init(inReq, _outResp) {
         await this.jadeLog.info("初始化", true)
         try {
-            this.danmuSpider = new DanmuSpider()
+            await await req(`http://127.0.0.1:8099/clear`,{timeout:0.1})
             this.siteKey = this.getJSName()
             this.siteType = this.getType()
             this.cfgObj = inReq.server.config[this.siteKey]
@@ -166,10 +93,6 @@ class Spider {
         }
     }
 
-
-    async setHome(filter) {
-    }
-
     async home(inReq, _outResp) {
         this.vodList = []
         await this.jadeLog.info("正在解析首页类别", true)
@@ -177,10 +100,6 @@ class Spider {
         await this.jadeLog.debug(`首页类别内容为:${this.result.home(this.classes, [], this.filterObj)}`)
         await this.jadeLog.info("首页类别解析完成", true)
         return this.result.home(this.classes, [], this.filterObj)
-    }
-
-    async setHomeVod() {
-
     }
 
     async homeVod() {
@@ -193,10 +112,6 @@ class Spider {
         } catch (e) {
             await this.jadeLog.error(`首页内容解析失败,失败原因为:${e}`)
         }
-    }
-
-    async setCategory(tid, pg, filter, extend) {
-
     }
 
     async category(inReq, _outResp) {
@@ -224,11 +139,8 @@ class Spider {
 
     }
 
-    async setDetail(id) {
-
-    }
-
     async detail(inReq, _outResp) {
+        await this.jadeLog.debug(`获取详情页面:${JSON.stringify(inReq.body)}`)
         const ids = !Array.isArray(inReq.body.id) ? [inReq.body.id] : inReq.body.id;
         const id = ids[0]
         this.vodDetail = new VodDetail();
@@ -245,10 +157,6 @@ class Spider {
 
     }
 
-    async setPlay(flag, id, flags) {
-        this.playUrl = id
-    }
-
     async play(inReq, _outResp) {
         const flag = inReq.body.flag;
         const id = inReq.body.id;
@@ -257,26 +165,42 @@ class Spider {
         try {
             let return_result;
             await this.setPlay(flag, id, flags)
-            if (this.playUrl["content"] !==undefined){
-                return  this.playUrl
-            }else{
-                 await this.jadeLog.debug("不需要加载弹幕", true)
-                return_result = this.result.play(this.playUrl)
+            if (this.playUrl["content"] !== undefined) {
+                return this.playUrl
+            } else {
+                await this.jadeLog.debug("不需要加载弹幕", true)
+                if (this.result.jx === 1 && this.playUrl.indexOf(".m3u8") < 0) {
+                    const sniffer = await inReq.server.messageToDart({
+                        action: 'sniff', opt: {
+                            url: id, timeout: 60000, rule: 'http((?!http).){12,}?\\.m3u8?',
+                        },
+                    });
+                    if (sniffer && sniffer.url) {
+                        const hds = {};
+                        if (sniffer.headers) {
+                            if (sniffer.headers['user-agent']) {
+                                hds['User-Agent'] = sniffer.headers['user-agent'];
+                            }
+                            if (sniffer.headers['referer']) {
+                                hds['Referer'] = sniffer.headers['referer'];
+                            }
+                        }
+                        await this.jadeLog.debug(`嗅探成功,播放连接为:${sniffer.url}`)
+                        return_result = JSON.stringify({parse: 0, url: sniffer.url, header: sniffer.headers, "jx": "0"});
+                    } else {
+                        await this.jadeLog.error("解析失败,无法嗅探到播放连接")
+                        return_result = JSON.stringify({parse: 0, url: "", "jx": "0"});
+                    }
+                } else {
+                    return_result = this.result.play(this.playUrl)
+                }
                 await this.jadeLog.info("播放页面解析完成", true)
                 await this.jadeLog.debug(`播放页面内容为:${return_result}`)
                 return return_result;
             }
-
-
-
         } catch (e) {
             await this.jadeLog.error("解析播放页面出错,失败原因为:" + e)
         }
-
-    }
-
-    async setSearch(wd, quick) {
-
     }
 
     async search(inReq, _outResp) {
@@ -284,8 +208,8 @@ class Spider {
         const wd = inReq.body.wd;
         let quick = true
         this.vodList = []
-        await this.jadeLog.info(`正在解析搜索页面,关键词为 = ${wd},quick = ${quick}`)
-        await this.setSearch(wd, quick)
+        await this.jadeLog.info(`正在解析搜索页面,关键词为 = ${wd},quick = ${quick},pg = ${pg}`)
+        await this.setSearch(wd, quick,pg)
         if (this.vodList.length === 0) {
             if (wd.indexOf(" ") > -1) {
                 await this.jadeLog.debug(`搜索关键词为:${wd},其中有空格,去除空格在搜索一次`)
@@ -297,31 +221,37 @@ class Spider {
         return this.result.search(this.vodList)
     }
 
-    async setProxy(segments, headers) {
-    }
-
     async proxy(inReq, outResp) {
         try {
             const what = inReq.params.what;
-            const headers = JSON.parse(inReq.params.ids);
+            let headers = {}
+            try {
+              headers = JSON.parse(inReq.params.ids);
+            }catch (e) {
+            }
             const purl = decodeURIComponent(inReq.params.end);
             let resp = JSON.parse(await this.setProxy([what, purl], headers))
-            if (resp.code === 200) {
+            if (what === "dash") {
+                await this.jadeLog.debug(`dash:${JSON.stringify(resp)}`)
                 outResp.code(resp.code).headers(resp.headers);
-                return Buffer.from(resp.content, 'base64')
+                return resp.content
             } else {
-                outResp.code(500)
-                return ""
+                if (resp.code === 200) {
+                    outResp.code(resp.code).headers(resp.headers);
+                    return Buffer.from(resp.content, 'base64')
+                } else {
+                    outResp.code(500)
+                    return ""
+                }
             }
+
         } catch (e) {
             await this.jadeLog.error(`代理回调失败,失败原因为:${e}`)
         }
-
     }
-
 }
 
 
 export {
-    Spider
+    NodeJSSpider
 }

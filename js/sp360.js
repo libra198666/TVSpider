@@ -4,7 +4,7 @@
 * @Date     : 2024/3/21 11:18
 * @Email    : jadehh@1ive.com
 * @Software : Samples
-* @Desc     :
+* @Desc     : SP360(需要用到解析)
 */
 import {Spider} from "./spider.js";
 import {_, Crypto, load} from "../lib/cat.js";
@@ -24,6 +24,7 @@ class Sp360Spider extends Spider {
     getAppName() {
         return "360"
     }
+
     getJSName() {
         return "sp360"
     }
@@ -34,7 +35,7 @@ class Sp360Spider extends Spider {
 
     async init(cfg) {
         await super.init(cfg);
-        this.danmuUrl = true
+        this.danmuStaus = true
     }
 
     async setClasses() {
@@ -517,9 +518,9 @@ class Sp360Spider extends Spider {
             let vodShort = new VodShort();
             vodShort.vod_id = data["id"] + "+" + tid
             if (!data["cover"].startsWith("http")) {
-                vodShort.vod_pic = "https:" + data["cdncover"]
+                vodShort.vod_pic = "https:" + data["cover"]
             } else {
-                vodShort.vod_pic = data["cdncover"]
+                vodShort.vod_pic = data["cover"]
             }
             vodShort.vod_name = data["title"]
             vodShort.vod_remarks = data["tag"]
@@ -552,10 +553,12 @@ class Sp360Spider extends Spider {
         for (const playFormat of data["playlink_sites"]) {
             let vodItems = []
             if (!_.isEmpty(data["allepidetail"])) {
-                for (const items of data["allepidetail"][playFormat]) {
-                    let episodeUrl = items["url"]
-                    let episodeName = items["playlink_num"]
-                    vodItems.push(episodeName + "$" + episodeUrl);
+                if (data["allepidetail"][playFormat] !== undefined) {
+                    for (const items of data["allepidetail"][playFormat]) {
+                        let episodeUrl = items["url"]
+                        let episodeName = items["playlink_num"]
+                        vodItems.push(episodeName + "$" + episodeUrl);
+                    }
                 }
             } else {
                 let items = data["playlinksdetail"][playFormat]
@@ -563,7 +566,9 @@ class Sp360Spider extends Spider {
                 let episodeName = items["quality"]
                 vodItems.push(episodeName + "$" + episodeUrl);
             }
-            playlist[playFormat] = vodItems.join("#")
+            if (vodItems.length > 0){
+                  playlist[playFormat] = vodItems.join("#")
+            }
         }
 
 
@@ -619,7 +624,7 @@ class Sp360Spider extends Spider {
     }
 
     async setPlay(flag, id, flags) {
-        if (this.danmuUrl) {
+        if (this.danmuStaus && ! this.catOpenStatus) {
             this.danmuUrl = await this.danmuSpider.getVideoUrl(id, 0)
         }
         this.result.parse = 1 //启用自动解析
@@ -663,4 +668,5 @@ export function __jsEvalReturn() {
         init: init, home: home, homeVod: homeVod, category: category, detail: detail, play: play, search: search,
     };
 }
+
 export {spider}

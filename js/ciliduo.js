@@ -4,14 +4,13 @@
 * @Date     : 2024/3/1 13:26
 * @Email    : jadehh@1ive.com
 * @Software : Samples
-* @Desc     :
+* @Desc     : 磁力多
 */
 
 import {_, load} from '../lib/cat.js';
 import {VodDetail, VodShort} from "../lib/vod.js"
 import * as Utils from "../lib/utils.js";
 import {Spider} from "./spider.js";
-import {detailContent} from "../lib/ali.js";
 
 
 class CiliDuoSpider extends Spider {

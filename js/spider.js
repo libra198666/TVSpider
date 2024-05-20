@@ -32,6 +32,8 @@ class Result {
         this.pagecount = 0
         this.limit = 0;
         this.total = 0;
+        this.extra = {}
+
     }
 
     get() {
@@ -55,7 +57,7 @@ class Result {
     }
 
     search(vod_list) {
-        return JSON.stringify({"list": vod_list})
+        return JSON.stringify({"list": vod_list,"page":this.page,"pagecount":this.pagecount,"total":this.total})
     }
 
     detail(vod_detail) {
@@ -71,6 +73,7 @@ class Result {
                 "format": this.format,
                 "subs": this.subs,
                 "danmaku": this.danmaku,
+                "extra": this.extra,
                 "jx": this.jx
             })
         } else {
@@ -80,13 +83,16 @@ class Result {
                 "header": this.header,
                 "format": this.format,
                 "subs": this.subs,
+                "extra": this.extra,
                 "jx": this.jx
             })
         }
     }
-    playTxt(url){
+
+    playTxt(url) {
         return url
     }
+
     errorCategory(error_message) {
         let vodShort = new VodShort()
         vodShort.vod_name = "错误:打开无效"
@@ -240,9 +246,13 @@ class Spider {
     getTypeDic(type_name, type_id) {
         return {"type_name": type_name, "type_id": type_id}
     }
+    getFliterDic(type_name, type_id) {
+        return {"n": type_name, "v": type_id}
+    }
 
-    async getHtml(url = this.siteUrl, headers = this.getHeader()) {
-        let html = await this.fetch(url, null, headers)
+
+    async getHtml(url = this.siteUrl, proxy = false, headers = this.getHeader()) {
+        let html = await this.fetch(url, null, headers, false, false, 0, proxy)
         if (!_.isEmpty(html)) {
             return load(html)
         } else {
@@ -258,12 +268,12 @@ class Spider {
         return class_name_list
     }
 
-    async postReconnect(reqUrl, params, headers) {
+    async postReconnect(reqUrl, params, headers,postType,buffer) {
         await this.jadeLog.error("请求失败,请检查url:" + reqUrl + ",两秒后重试")
         Utils.sleep(2)
         if (this.reconnectTimes < this.maxReconnectTimes) {
             this.reconnectTimes = this.reconnectTimes + 1
-            return await this.post(reqUrl, params, headers)
+            return await this.post(reqUrl, params, headers,postType,buffer)
         } else {
             await this.jadeLog.error("请求失败,重连失败")
             return null
@@ -274,14 +284,14 @@ class Spider {
         return {"User-Agent": Utils.CHROME, "Referer": this.siteUrl + "/"};
     }
 
-    async getResponse(reqUrl, params, headers, redirect_url, return_cookie, buffer, response) {
+    async getResponse(reqUrl, params, headers, redirect_url, return_cookie, buffer, response,proxy) {
         {
             if (response.headers["location"] !== undefined) {
                 if (redirect_url) {
                     await this.jadeLog.debug(`返回重定向连接:${response.headers["location"]}`)
                     return response.headers["location"]
                 } else {
-                    return this.fetch(response.headers["location"], params, headers, redirect_url, return_cookie, buffer)
+                    return this.fetch(response.headers["location"], params, headers, redirect_url, return_cookie, buffer,proxy)
                 }
             } else if (response.content.length > 0) {
                 this.reconnectTimes = 0
@@ -295,13 +305,13 @@ class Spider {
                 return response.content
             } else {
                 await this.jadeLog.error(`请求失败,请求url为:${reqUrl},回复内容为:${JSON.stringify(response)}`)
-                return await this.reconnnect(reqUrl, params, headers, redirect_url, return_cookie, buffer)
+                return await this.reconnnect(reqUrl, params, headers, redirect_url, return_cookie, buffer,proxy)
             }
         }
     }
 
 
-    async fetch(reqUrl, params, headers, redirect_url = false, return_cookie = false, buffer = 0) {
+    async fetch(reqUrl, params, headers, redirect_url = false, return_cookie = false, buffer = 0, proxy = false) {
         let data = Utils.objectToStr(params)
         let url = reqUrl
         if (!_.isEmpty(data)) {
@@ -311,13 +321,13 @@ class Spider {
         let response;
         if (redirect_url) {
             response = await req(uri.toString(), {
-                method: "get", headers: headers, buffer: buffer, data: null, redirect: 2
+                method: "get", headers: headers, buffer: buffer, data: null, redirect: 2, proxy: proxy
             })
         } else {
-            response = await req(uri.toString(), {method: "get", headers: headers, buffer: buffer, data: null});
+            response = await req(uri.toString(), {method: "get", headers: headers, buffer: buffer, data: null,proxy:proxy,timeout:10000});
         }
         if (response.code === 200 || response.code === 302 || response.code === 301 || return_cookie) {
-            return await this.getResponse(reqUrl, params, headers, redirect_url, return_cookie, buffer, response)
+            return await this.getResponse(reqUrl, params, headers, redirect_url, return_cookie, buffer, response,proxy)
         } else {
             await this.jadeLog.error(`请求失败,失败原因为:状态码出错,请求url为:${uri},回复内容为:${JSON.stringify(response)}`)
             return await this.reconnnect(reqUrl, params, headers, redirect_url, return_cookie, buffer)
@@ -329,10 +339,10 @@ class Spider {
     }
 
 
-    async post(reqUrl, params, headers, postType = "form") {
+    async post(reqUrl, params, headers, postType = "form",buffer = 0) {
         let uri = new Uri(reqUrl);
         let response = await req(uri.toString(), {
-            method: "post", headers: headers, data: params, postType: postType
+            method: "post", headers: headers, data: params, postType: postType,buffer: buffer
         });
         if (response.code === 200 || response.code === undefined || response.code === 302) {
             // 重定向
@@ -342,11 +352,11 @@ class Spider {
                 this.reconnectTimes = 0
                 return response.content
             } else {
-                return await this.postReconnect(reqUrl, params, headers)
+                return await this.postReconnect(reqUrl, params, headers,postType,buffer)
             }
         } else {
             await this.jadeLog.error(`请求失败,请求url为:${reqUrl},回复内容为${JSON.stringify(response)}`)
-            return await this.postReconnect(reqUrl, params, headers)
+            return await this.postReconnect(reqUrl, params, headers,postType,buffer)
 
         }
     }
@@ -642,7 +652,7 @@ class Spider {
                 if (this.danmuStaus && !this.catOpenStatus) {
                     if (!_.isEmpty(this.danmuUrl)) {
                         await this.jadeLog.debug("播放详情页面有弹幕,所以不需要再查找弹幕")
-                        return_result = this.result.setHeader(this.header).danmu(this.danmuUrl).play(this.playUrl)
+                        return_result = this.result.danmu(this.danmuUrl).play(this.playUrl)
                     } else {
                         let danmuUrl;
                         try {
@@ -650,12 +660,12 @@ class Spider {
                         } catch (e) {
                             await this.jadeLog.error(`弹幕加载失败,失败原因为:${e}`)
                         }
-                        return_result = this.result.setHeader(this.header).danmu(danmuUrl).play(this.playUrl)
+                        return_result = this.result.danmu(danmuUrl).play(this.playUrl)
                     }
 
                 } else {
                     await this.jadeLog.debug("不需要加载弹幕", true)
-                    return_result = this.result.setHeader(this.header).play(this.playUrl)
+                    return_result = this.result.play(this.playUrl)
                 }
             }
             await this.jadeLog.info("播放页面解析完成", true)
@@ -675,7 +685,7 @@ class Spider {
     async search(wd, quick) {
         this.vodList = []
         await this.jadeLog.info(`正在解析搜索页面,关键词为 = ${wd},quick = ${quick}`)
-        await this.setSearch(wd, quick)
+        await this.setSearch(wd, quick,1)
         if (this.vodList.length === 0) {
             if (wd.indexOf(" ") > -1) {
                 await this.jadeLog.debug(`搜索关键词为:${wd},其中有空格,去除空格在搜索一次`)
@@ -689,15 +699,25 @@ class Spider {
 
     async getImg(url, headers) {
         let resp;
+        let vpn_proxy = headers["Proxy"] // 使用代理不需要加headers
         if (_.isEmpty(headers)) {
             headers = {Referer: url, 'User-Agent': Utils.CHROME}
         }
-        resp = await req(url, {buffer: 2, headers: headers});
+        resp = await req(url, {buffer: 2, headers: headers,proxy:vpn_proxy});
         try {
+            //二进制文件是不能使用Base64编码格式的
             Utils.base64Decode(resp.content)
-            await this.jadeLog.error(`图片代理获取失败,重连失败`, true)
-            this.reconnectTimes = 0
-            return {"code": 500, "headers": headers, "content": "加载失败"}
+            if (vpn_proxy){
+                await this.jadeLog.error(`使用VPN代理,图片地址为:${url},headers:${JSON.stringify(headers)},代理失败,准备重连,输出内容为:${JSON.stringify(resp)}`)
+            }else {
+                await this.jadeLog.error(`使用普通代理,图片地址为:${url},headers:${JSON.stringify(headers)},代理失败,准备重连,输出内容为:${JSON.stringify(resp)}`)
+            }
+            if (this.reconnectTimes < this.maxReconnectTimes){
+                this.reconnectTimes = this.reconnectTimes + 1
+                return await this.getImg(url,headers)
+            }else{
+                return {"code": 500, "headers": headers, "content": "加载失败"}
+            }
         } catch (e) {
             await this.jadeLog.debug("图片代理成功", true)
             this.reconnectTimes = 0
